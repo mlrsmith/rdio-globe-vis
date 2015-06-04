@@ -168,16 +168,14 @@ DAT.Globe = function(container, opts) {
   function createPoints(data, opts) {
     var lat, lng, size, color, i, step, colorFnWrapper;
 
-    step = 3;
-    colorFnWrapper = function(data, i) { return colorFn(data[i+2]); }
+    step = 4;
 
     var subgeo = new THREE.Geometry();
     for (i = 0; i < data.length; i += step) {
       lat = data[i];
       lng = data[i + 1];
-      color = colorFnWrapper(data,i);
-      size = data[i + 2];
-      size = size*80;
+      color = colorFn(data[i+2]);
+      size = data[i + 3];
       createPoint(lat, lng, size, color, subgeo);
     }
 
