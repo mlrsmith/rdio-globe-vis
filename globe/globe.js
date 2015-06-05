@@ -85,6 +85,9 @@ DAT.Globe = function(container, opts) {
   var padding = 40;
   var PI_HALF = Math.PI / 2;
 
+  var autoRotationId = null;
+  var autoRotationStartId = null;
+
   function init() {
 
     container.style.color = '#fff';
@@ -104,7 +107,9 @@ DAT.Globe = function(container, opts) {
     shader = Shaders['earth'];
     uniforms = THREE.UniformsUtils.clone(shader.uniforms);
 
-    uniforms['texture'].value = THREE.ImageUtils.loadTexture(imgDir+'world.jpg');
+    imageFile = "world.jpg"
+    //imageFile = "worldrdio.png"
+    uniforms['texture'].value = THREE.ImageUtils.loadTexture(imgDir+imageFile);
 
     material = new THREE.ShaderMaterial({
 
@@ -237,6 +242,8 @@ DAT.Globe = function(container, opts) {
     targetOnDown.y = target.y;
 
     container.style.cursor = 'move';
+
+    cancelAutoRotation();
   }
 
   function onMouseMove(event) {
@@ -257,12 +264,16 @@ DAT.Globe = function(container, opts) {
     container.removeEventListener('mouseup', onMouseUp, false);
     container.removeEventListener('mouseout', onMouseOut, false);
     container.style.cursor = 'auto';
+
+    startAutoRotation(2500);
   }
 
   function onMouseOut(event) {
     container.removeEventListener('mousemove', onMouseMove, false);
     container.removeEventListener('mouseup', onMouseUp, false);
     container.removeEventListener('mouseout', onMouseOut, false);
+
+    startAutoRotation(2500);
   }
 
   function onMouseWheel(event) {
@@ -270,6 +281,10 @@ DAT.Globe = function(container, opts) {
     if (overRenderer) {
       zoom(event.wheelDeltaY * 0.3);
     }
+
+    cancelAutoRotation();
+    startAutoRotation(2500);
+
     return false;
   }
 
@@ -284,6 +299,34 @@ DAT.Globe = function(container, opts) {
         event.preventDefault();
         break;
     }
+
+    cancelAutoRotation();
+    startAutoRotation(2500);
+  }
+
+  function cancelAutoRotation() {
+
+    if (autoRotationId != null) {
+      clearInterval(autoRotationId);
+      autoRotationId = null;
+    }
+
+    if (autoRotationStartId != null) {
+      clearTimeout(autoRotationStartId);
+      autoRotationStartId = null;
+    }
+
+  }
+
+  function startAutoRotation(time) {
+    autoRotationStartId = setTimeout(function () {
+      autoRotate();
+      autoRotationId = setInterval(autoRotate, 50);
+    }, time);
+  }
+
+  function autoRotate() {
+    target.x += 0.005;
   }
 
   function onWindowResize( event ) {
@@ -321,6 +364,7 @@ DAT.Globe = function(container, opts) {
 
   init();
   this.animate = animate;
+  this.startAutoRotation = startAutoRotation;
 
 
   this.createPoints = createPoints;

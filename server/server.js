@@ -30,24 +30,41 @@ wss.on("connection", function(ws) {
 
 console.log("Starting");
 
+clientId = 0;
+clients = {};
+
+function sendToConnectedClients(payload) {
+
+  for (var i in clients) {
+    clients[i].send(JSON.stringify(payload));
+  }
+}
+
+process.stdin.pipe(split()).on('data', function(line) {
+  // console.log("Received message: "+data);
+  data = JSON.parse(line)
+
+  // We could send these in batches but don't currently.
+  payload = {
+    plays: [
+      {
+        lat: data.latitude,
+        lon: data.longitude
+      }
+    ]
+  };
+  sendToConnectedClients(payload);
+});
+
 wss.on("connection", function(ws) {
-  var received = 0
-  process.stdin.pipe(split()).on('data', function(line) {
-    received += 1;
+  clientId++;
+  clients[clientId] = ws;
 
-    if (true) {
-      data = JSON.parse(line)
-      console.log("Received message: "+data);
-
-      data = { plays: [
-        {
-          lat: data.latitude,
-          lon: data.longitude
-        }
-      ]};
-      ws.send(JSON.stringify(data));
-    }
-
+  ws.on("close", function(code, message) {
+    delete clients[clientId];
+  });
+  ws.on("error", function(code, message) {
+    delete clients[clientId];
   });
 });
 
