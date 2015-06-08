@@ -26,43 +26,80 @@ DAT.Globe = function(container, opts) {
   var Shaders = {
     'earth' : {
       uniforms: {
-        'texture': { type: 't', value: null }
+        'texture': { type: 't', value: null },
+        'uLightLocation': { type: 'v3', value: new THREE.Vector3(0, 0, 0) },
+        'uLightColor': { type: 'c', value: new THREE.Color(0xffffff) }
       },
+
+      // Modifications to support 'sun' lighting based on http://learningwebgl.com/blog/?p=1523
       vertexShader: [
+        'uniform vec3 uLightLocation;',
         'varying vec3 vNormal;',
         'varying vec2 vUv;',
+        'varying vec4 vPosition;',
+        'varying vec4 vLightPosition;',
         'void main() {',
-          'gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );',
+          'vPosition = modelViewMatrix * vec4( position, 1.0);',
+          'vLightPosition = modelViewMatrix * vec4 (uLightLocation, 1.0);',
+          'gl_Position = projectionMatrix * vPosition;',
           'vNormal = normalize( normalMatrix * normal );',
           'vUv = uv;',
         '}'
       ].join('\n'),
       fragmentShader: [
         'uniform sampler2D texture;',
+        'uniform vec3 uLightColor;',
         'varying vec3 vNormal;',
         'varying vec2 vUv;',
+        'varying vec4 vPosition;',
+        'varying vec4 vLightPosition;',
         'void main() {',
+          'vec3 lightDirection = normalize(vLightPosition.xyz - vPosition.xyz);',
+          'float directionalLightWeight = max(dot(normalize(vNormal), lightDirection), 0.1);',
+          //'float directionalLightWeight = max(dot(normalize(vNormal), lightDirection), 0.0);',
+          //'float directionalLightWeightA = max(dot(normalize(vNormal), lightDirection), 0.0);',
+          //'float directionalLightWeight = directionalLightWeightA * step(0.2, directionalLightWeightA);',
           'vec3 diffuse = texture2D( texture, vUv ).xyz;',
+          'vec3 light = uLightColor * directionalLightWeight;',
           'float intensity = 1.05 - dot( vNormal, vec3( 0.0, 0.0, 1.0 ) );',
-          'vec3 atmosphere = vec3( 1.0, 1.0, 1.0 ) * pow( intensity, 3.0 );',
-          'gl_FragColor = vec4( diffuse + atmosphere, 1.0 );',
+          //'vec3 atmosphere = vec3( 1.0, 1.0, 1.0 ) * pow( intensity, 3.0 );',
+          'vec3 atmosphere = vec3( 0.0, 0.2, 0.5 ) * pow( intensity, 3.0 );',
+          //'gl_FragColor = vec4( diffuse * light + atmosphere, 1.0 );',
+          'gl_FragColor = vec4( diffuse * light * 15.0 + atmosphere, 1.0 );', // * 15 is a totally arbitrary thing that seems to look nice.
+          //'gl_FragColor = vec4( light, 1.0 );',
         '}'
       ].join('\n')
     },
     'atmosphere' : {
-      uniforms: {},
+      uniforms: {
+        'uLightLocation': { type: 'v3', value: new THREE.Vector3(0, 0, 0) },
+        'uLightColor': { type: 'c', value: new THREE.Color(0xffffff) }
+      },
       vertexShader: [
+        'uniform vec3 uLightLocation;',
         'varying vec3 vNormal;',
+        'varying vec4 vLightPosition;',
+        'varying vec4 vPosition;',
         'void main() {',
+          'vPosition = modelViewMatrix * vec4( position, 1.0);',
           'vNormal = normalize( normalMatrix * normal );',
+          'vLightPosition = modelViewMatrix * vec4 (uLightLocation, 1.0);',
           'gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );',
         '}'
       ].join('\n'),
       fragmentShader: [
         'varying vec3 vNormal;',
+        'varying vec4 vPosition;',
+        'varying vec4 vLightPosition;',
+        'uniform vec3 uLightColor;',
         'void main() {',
+          'vec3 lightDirection = normalize(vPosition.xyz - vLightPosition.xyz);',
+          'float directionalLightWeight = max(dot(normalize(vNormal), lightDirection), 0.2);',
+          'vec3 light = uLightColor * directionalLightWeight;',
+
           'float intensity = pow( 0.8 - dot( vNormal, vec3( 0, 0, 1.0 ) ), 12.0 );',
-          'gl_FragColor = vec4( 1.0, 1.0, 1.0, 1.0 ) * intensity;',
+          //'gl_FragColor = vec4( 1.0, 1.0, 1.0, 1.0 ) * intensity;',
+          'gl_FragColor = vec4( light, 1.0) * intensity * 0.5;',
         '}'
       ].join('\n')
     }
@@ -88,6 +125,9 @@ DAT.Globe = function(container, opts) {
   var autoRotationId = null;
   var autoRotationStartId = null;
 
+  var earthMaterial = null;
+  var atmosMaterial = null;
+
   function init() {
 
     container.style.color = '#fff';
@@ -110,6 +150,8 @@ DAT.Globe = function(container, opts) {
     imageFile = "world.jpg"
     //imageFile = "worldrdio.png"
     uniforms['texture'].value = THREE.ImageUtils.loadTexture(imgDir+imageFile);
+    // A pretty sea-blueish color. Because lazy and it looks nice!?
+    uniforms['uLightColor'].value = new THREE.Color(0x006994);
 
     material = new THREE.ShaderMaterial({
 
@@ -118,6 +160,8 @@ DAT.Globe = function(container, opts) {
           fragmentShader: shader.fragmentShader
 
         });
+    earthMaterial = material;
+
 
     mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.y = Math.PI;
@@ -125,6 +169,7 @@ DAT.Globe = function(container, opts) {
 
     shader = Shaders['atmosphere'];
     uniforms = THREE.UniformsUtils.clone(shader.uniforms);
+    uniforms['uLightColor'].value = new THREE.Color(0x003280);
 
     material = new THREE.ShaderMaterial({
 
@@ -136,9 +181,10 @@ DAT.Globe = function(container, opts) {
           transparent: true
 
         });
+    atmosMaterial = material;
 
     mesh = new THREE.Mesh(geometry, material);
-    mesh.scale.set( 1.1, 1.1, 1.1 );
+    mesh.scale.set( 1.2, 1.2, 1.2 );
     scene.add(mesh);
 
     geometry = new THREE.BoxGeometry(0.75, 0.75, 1);
@@ -327,6 +373,7 @@ DAT.Globe = function(container, opts) {
 
   function autoRotate() {
     target.x += 0.005;
+
   }
 
   function onWindowResize( event ) {
@@ -358,6 +405,35 @@ DAT.Globe = function(container, opts) {
     camera.position.z = distance * Math.cos(rotation.x) * Math.cos(rotation.y);
 
     camera.lookAt(mesh.position);
+
+    var sunDist = 10000000;
+    // normalized time_of_day ranges from [-1, 1]
+    date = new Date();
+    time_of_day = (date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds()) / (3600*24) * 2 - 1;
+    time_of_day = -time_of_day;
+
+    // For testing a 'day' lasts 60 seconds
+    //time_of_day = (date.getUTCSeconds() + (date.getUTCMilliseconds()/1000)) / 60 * 2 - 1;
+
+    // cos vs sin and arbitrary looking + 0.5 --> bogus?
+    var x = sunDist * Math.sin((time_of_day + 0.5)* Math.PI);
+    var z = sunDist * Math.cos((time_of_day + 0.5)* Math.PI);
+
+    var time = date.getTime();
+    var startOfYear = Date.UTC(date.getUTCFullYear(), 0, 0);
+    // time_of_year ranges from [-1, 1] also!
+    time_of_year = ((time - startOfYear)/(365*24*60*60*1000) - 0.5) * 2;
+
+    // Why sin? Why + 0.5?
+    var y = Math.sin((time_of_year + 0.5) * 23.5 / 180 * Math.PI) * sunDist;
+
+    var pos = new THREE.Vector3(x, y, z);
+    //console.log("Computed sun position as ("+pos.x+", "+pos.y+", "+pos.z+")");
+
+    earthMaterial.uniforms['uLightLocation'].value = pos
+    // This is apparently not actually needed.
+    //earthMaterial.needsUpdate = true;
+    atmosMaterial.uniforms['uLightLocation'].value = pos
 
     renderer.render(scene, camera);
   }
